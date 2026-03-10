@@ -48,14 +48,6 @@ def predict_pipeline(models_dict, tensor_input, device='cpu', filename=''):
             pass
         else:
             # STAGE 1: Organ Classification
-            # NOTE: If models are newly initialized (no `.pth` weights loaded), output is random.
-            # To simulate a perfect classifier during development/demo, we'll try to look at the tensor 
-            # properties or ideally mock it if 'brain', 'liver', 'prostate' is in a filename context, 
-            # but since we only have `tensor_input` here, we rely on the untrained network's noise.
-            # For demonstration, we will override it to return a random valid, but fixed organ if 
-            # we want to demo without training. But better yet, let's fix the pipeline to use 
-            # the app.py filename context (if passed) or inject a mock routing.
-            
             classifier = models_dict["classifier"]
             organ_outputs = classifier(tensor_input)
             organ_probs = torch.softmax(organ_outputs, dim=1).cpu().numpy()[0]
@@ -74,25 +66,6 @@ def predict_pipeline(models_dict, tensor_input, device='cpu', filename=''):
             organ_confidence = 0.99
             tumor_predictions = {cls: 0.999 if cls == "Normal" else 0.001 for cls in LUNG_CLASSES}
         else:
-            # DEMO OVERRIDE: Since we don't have hours to train the 5 Resnet models right now,
-            # untested weights will output random noise. To ensure UI shows the right organ logic:
-            
-            # Check if this context is given (we will update app.py to pass filename)
-            # For now, we accept detected_organ but let's allow an explicit override parameter
-            fname_lower = filename.lower()
-            if "brain" in fname_lower:
-                detected_organ = "Brain"
-                organ_confidence = 0.95
-            elif "liver" in fname_lower:
-                detected_organ = "Liver"
-                organ_confidence = 0.95
-            elif "lung" in fname_lower or "chest" in fname_lower:
-                detected_organ = "Lung"
-                organ_confidence = 0.95
-            elif "prostate" in fname_lower:
-                detected_organ = "Prostate"
-                organ_confidence = 0.95
-
             if detected_organ == "Brain":
                 preds = models_dict["brain"](tensor_input).cpu().numpy()[0]
                 tumor_predictions = {BRAIN_CLASSES[i]: float(preds[i]) for i in range(len(BRAIN_CLASSES))}
