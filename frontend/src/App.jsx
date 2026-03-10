@@ -24,7 +24,9 @@ function App() {
   const [file, setFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [activeTab, setActiveTab] = useState('upload');
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [patientName, setPatientName] = useState('');
+  const [patientId, setPatientId] = useState('');
   const [metricsData, setMetricsData] = useState(null);
   const [worklist, setWorklist] = useState([
     { id: '1003', patientName: 'Robert Johnson', scanType: 'CT Thorax', priority: 'Urgent', date: new Date().toLocaleDateString() },
@@ -134,7 +136,8 @@ Electronically drafted by: NeuroScan AI`;
       setResult(null);
       setReviewStatus(null);
       setReviewComments('');
-      uploadFile(selectedFile);
+      // Store currently entered patient values for upload logic
+      uploadFile(selectedFile, patientName, patientId);
     } else {
       setError('Invalid file format. Please upload a .dcm, .png, or .jpg file.');
     }
@@ -144,13 +147,15 @@ Electronically drafted by: NeuroScan AI`;
     fileInputRef.current.click();
   };
 
-  const uploadFile = async (fileToUpload) => {
+  const uploadFile = async (fileToUpload, name, id) => {
     setIsUploading(true);
     setResult(null);
     setError(null);
 
     const formData = new FormData();
     formData.append('file', fileToUpload);
+    if (name) formData.append('patient_name', name);
+    if (id) formData.append('patient_id', id);
 
     try {
       // Connecting to our FastAPI backend
@@ -171,14 +176,14 @@ Electronically drafted by: NeuroScan AI`;
         // Add to Triage Worklist automatically
         const priority = data.triage_priority || 'Normal';
         const newItem = {
-          id: Math.floor(Math.random() * 10000 + 2000).toString(),
-          patientName: 'Unassigned (New Upload)',
+          id: id || Math.floor(Math.random() * 10000 + 2000).toString(),
+          patientName: name || 'Unassigned',
           scanType: data.type || 'Medical Scan',
           priority: priority,
           date: new Date().toLocaleDateString(),
           resultData: data
         };
-        setWorklist(prev => [...prev, newItem]);
+        setWorklist(prev => [newItem, ...prev]);
         
         // Critical Alert Trigger
         if (priority === 'Urgent' && data.predictions) {
@@ -260,8 +265,12 @@ Electronically drafted by: NeuroScan AI`;
         </div>
         
         <nav className="nav-links">
+          <div className={`nav-link ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => handleTabChange('dashboard')}>
+            <PieChart size={20} />
+            Overview Dashboard
+          </div>
           <div className={`nav-link ${activeTab === 'upload' ? 'active' : ''}`} onClick={() => handleTabChange('upload')}>
-            <LayoutDashboard size={20} />
+            <UploadCloud size={20} />
             Diagnostic Upload
           </div>
           <div className={`nav-link ${activeTab === 'worklist' ? 'active' : ''}`} onClick={() => handleTabChange('worklist')}>
@@ -272,7 +281,7 @@ Electronically drafted by: NeuroScan AI`;
             <BarChart2 size={20} />
             AI Performance
           </div>
-          <div className="nav-link">
+          <div className={`nav-link ${activeTab === 'models' ? 'active' : ''}`} onClick={() => handleTabChange('models')}>
             <Cpu size={20} />
             AI Models
           </div>
@@ -289,9 +298,101 @@ Electronically drafted by: NeuroScan AI`;
           </div>
         </header>
 
-        {activeTab === 'upload' ? (
+        {activeTab === 'dashboard' ? (
+          <section className="content-area">
+            <div className="dashboard-overview">
+              <div style={{ fontSize: '1.25rem', fontWeight: 600, color: '#fff', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <PieChart color="var(--accent-color)" /> Clinic Intelligence Dashboard
+              </div>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
+                Real-time overview of AI processing pipeline, patient ingest queues, and hardware diagnostic load.
+              </div>
+
+              <div className="metrics-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '2rem' }}>
+                <div className="panel" style={{ borderLeft: '4px solid var(--accent-color)' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase', marginBottom: '0.25rem', fontWeight: 600 }}>Triage Queue Size</div>
+                  <div style={{ fontSize: '2rem', color: '#fff', fontWeight: 700 }}>{worklist.length}</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>Active patients pending review</div>
+                </div>
+                <div className="panel" style={{ borderLeft: '4px solid var(--warning)', borderColor: 'rgba(210, 153, 34, 0.4)' }}>
+                  <div style={{ color: 'var(--warning)', fontSize: '0.85rem', textTransform: 'uppercase', marginBottom: '0.25rem', fontWeight: 600 }}>Urgent Scans</div>
+                  <div style={{ fontSize: '2rem', color: '#fff', fontWeight: 700 }}>{worklist.filter(w => w.priority === 'Urgent').length}</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>High confidence tumor findings</div>
+                </div>
+                <div className="panel" style={{ borderLeft: '4px solid var(--success)' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase', marginBottom: '0.25rem', fontWeight: 600 }}>System Status</div>
+                  <div style={{ fontSize: '2rem', color: 'var(--success)', fontWeight: 700 }}>100%</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>5 inference modes online</div>
+                </div>
+              </div>
+
+              <div className="panel" style={{ marginTop: '1rem' }}>
+                <div className="panel-header" style={{ marginBottom: '1rem' }}>
+                  <Activity size={18} /> Recent Upload Activity
+                </div>
+                {worklist.slice(0, 3).map(item => (
+                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', borderBottom: '1px solid var(--glass-border)' }}>
+                    <div>
+                      <div style={{ color: '#fff', fontWeight: 500 }}>{item.patientName}</div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Scan: {item.scanType} • ID: #{item.id}</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <div className={`priority-badge priority-${item.priority.toLowerCase()}`}>
+                        {item.priority}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <button 
+                  onClick={() => handleTabChange('upload')} 
+                  style={{ width: '100%', marginTop: '1.5rem', padding: '0.75rem', backgroundColor: 'var(--accent-color)', color: '#000', fontWeight: 600, border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+                  + Upload New Patient Scan
+                </button>
+              </div>
+            </div>
+          </section>
+        ) : activeTab === 'upload' ? (
         <section className="content-area">
           <div className="upload-section">
+            <div className="patient-form" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem' }}>
+               <div style={{ flex: 1 }}>
+                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>Patient Full Name</label>
+                 <input 
+                   type="text" 
+                   className="form-input" 
+                   placeholder="e.g., John Doe" 
+                   value={patientName} 
+                   onChange={e => setPatientName(e.target.value)}
+                   style={{ 
+                     width: '100%', 
+                     padding: '0.75rem', 
+                     backgroundColor: 'rgba(255, 255, 255, 0.05)', 
+                     border: '1px solid var(--border-color)', 
+                     borderRadius: '6px', 
+                     color: '#fff' 
+                   }}
+                 />
+               </div>
+               <div style={{ flex: 1 }}>
+                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>Patient ID / MRN</label>
+                 <input 
+                   type="text" 
+                   className="form-input" 
+                   placeholder="e.g., MRN-1004" 
+                   value={patientId} 
+                   onChange={e => setPatientId(e.target.value)}
+                   style={{ 
+                     width: '100%', 
+                     padding: '0.75rem', 
+                     backgroundColor: 'rgba(255, 255, 255, 0.05)', 
+                     border: '1px solid var(--border-color)', 
+                     borderRadius: '6px', 
+                     color: '#fff' 
+                   }}
+                 />
+               </div>
+            </div>
+            
             <div 
               className={`upload-zone ${isDragging ? 'drag-active' : ''}`}
               onDragOver={handleDragOver}
@@ -782,6 +883,61 @@ Electronically drafted by: NeuroScan AI`;
                  Generating Telemetry Overview...
                </div>
              )}
+          </div>
+        </section>
+        ) : activeTab === 'models' ? (
+        <section className="content-area">
+          <div className="models-view">
+             <div style={{ fontSize: '1.25rem', fontWeight: 600, color: '#fff', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <Cpu color="var(--accent-color)" /> AI Model Administration
+             </div>
+             <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
+                Manage loaded neural networks and deep learning models for inference.
+             </div>
+             
+             <div className="models-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
+                <div className="panel" style={{ borderLeft: '4px solid var(--success)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                    <div style={{ fontWeight: 600, color: '#fff' }}>DenseNet-121 Classifier</div>
+                    <div style={{ fontSize: '0.75rem', backgroundColor: 'rgba(46, 160, 67, 0.1)', color: 'var(--success)', padding: '2px 8px', borderRadius: '10px', border: '1px solid var(--success)' }}>ACTIVE</div>
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                    Primary multi-class classification model for detecting 14 common thoracic diseases and tumors from chest X-rays.
+                  </div>
+                  <div style={{ fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--glass-border)', paddingTop: '0.75rem' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Version: v2.4.1</span>
+                    <span style={{ color: '#fff' }}>Params: 7.0M</span>
+                  </div>
+                </div>
+
+                <div className="panel" style={{ borderLeft: '4px solid var(--success)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                    <div style={{ fontWeight: 600, color: '#fff' }}>ResNet-50 Localization Model</div>
+                    <div style={{ fontSize: '0.75rem', backgroundColor: 'rgba(46, 160, 67, 0.1)', color: 'var(--success)', padding: '2px 8px', borderRadius: '10px', border: '1px solid var(--success)' }}>ACTIVE</div>
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                    Bounding box regression model for highlighting precise lesion coordinates on input scans.
+                  </div>
+                  <div style={{ fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--glass-border)', paddingTop: '0.75rem' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Version: v1.8.0</span>
+                    <span style={{ color: '#fff' }}>Params: 23.5M</span>
+                  </div>
+                </div>
+                
+                <div className="panel" style={{ borderLeft: '4px solid var(--text-muted)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                    <div style={{ fontWeight: 600, color: '#fff' }}>Brain MRI Segmentation Subsystem</div>
+                    <div style={{ fontSize: '0.75rem', backgroundColor: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-muted)', padding: '2px 8px', borderRadius: '10px', border: '1px solid var(--text-muted)' }}>INACTIVE</div>
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                    High-resolution 3D U-Net masking for volumetric brain tumor isolation. Currently pending validation.
+                  </div>
+                  <div style={{ fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--glass-border)', paddingTop: '0.75rem' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Version: v0.9.beta</span>
+                    <span style={{ color: '#fff' }}>Params: 19.0M</span>
+                  </div>
+                </div>
+             </div>
           </div>
         </section>
         ) : null}

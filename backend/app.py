@@ -3,7 +3,7 @@ import io
 import base64
 import numpy as np
 import pydicom
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
@@ -64,7 +64,11 @@ def preprocess_image(img: Image.Image):
     return img_resized, tensor_input
 
 @app.post("/upload")
-async def upload_image(file: UploadFile = File(...)):
+async def upload_image(
+    file: UploadFile = File(...),
+    patient_name: Optional[str] = Form(None),
+    patient_id: Optional[str] = Form(None)
+):
     # Save the file securely
     file_path = os.path.join(UPLOAD_DIR, file.filename)
     with open(file_path, "wb") as f:
@@ -93,9 +97,18 @@ async def upload_image(file: UploadFile = File(...)):
         predictions = None
         localizations = []
         triage_priority = "Normal"
+        detected_organ = "Unknown"
+        tumor_pattern = "Normal"
+        conf_score = 0.0
+        
         if tumor_model and loc_model:
             # We need to pass the tensor input to the predict function
-            predictions, localizations = predict(tumor_model, loc_model, tensor_input)
+            results_dict = predict(tumor_model, loc_model, tensor_input, filename=file.filename)
+            predictions = results_dict["All Predictions"]
+            localizations = results_dict["Localizations"]
+            detected_organ = results_dict["Detected Organ"]
+            tumor_pattern = results_dict["Tumor Pattern Detected"]
+            conf_score = results_dict["Confidence Score"]
             
             # Triage priority classification based on pathological risk
             if predictions:
@@ -151,13 +164,18 @@ async def upload_image(file: UploadFile = File(...)):
             "status": "success",
             "message": "Image successfully uploaded and processed.",
             "filename": file.filename,
+            "patient_name": patient_name,
+            "patient_id": patient_id,
             "type": file_type,
             "tensor_shape": str(tensor_input.shape),
             "preview": preview_base64,
             "predictions": predictions,
             "localizations": localizations,
             "triage_priority": triage_priority,
-            "previous_scan": previous_scan
+            "previous_scan": previous_scan,
+            "detected_organ": detected_organ,
+            "tumor_pattern": tumor_pattern,
+            "confidence_score": f"{conf_score*100:.1f}%"
         }
             
     except Exception as e:
